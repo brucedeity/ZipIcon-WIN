@@ -257,16 +257,12 @@ std::string sha256_file(const std::string& filename, std::vector<std::string>& e
     return oss.str();
 }
 
-int main()
+int main(int argc, char* argv[])
 {
     auto start_time = std::chrono::high_resolution_clock::now();
 
-    std::string zipPath = "Icons.zip";
-    std::string tempExtractDir = "extracted_icons";
-    std::string iconsDir = "icons";
-    std::string stateFile = "state.json";
-
     json result;
+    result["status"] = "success";
     result["success"] = false;
     result["total"] = 0;
     result["new"] = 0;
@@ -276,15 +272,40 @@ int main()
 
     try
     {
+        if (argc < 2)
+        {
+            result["status"] = "error";
+            result["errors"].emplace_back("Please provide a zip file to extract icons from.");
+            std::cout << result.dump(4) << std::endl;
+            return 1;
+        }
+
+        std::string zipPath = argv[1];
+
+        if (!fs::exists(zipPath))
+        {
+            result["status"] = "error";
+            result["errors"].emplace_back("Specified zip file does not exist.");
+            std::cout << result.dump(4) << std::endl;
+            return 1;
+        }
+
+        fs::path zipFsPath(zipPath);
+        fs::path zipDirectory = zipFsPath.parent_path();
+        std::string tempExtractDir = (zipDirectory / "extracted_icons").string();
+        std::string iconsDir = (zipDirectory / "icons").string();
+        std::string stateFile = (zipDirectory / "state.json").string();
+
         if (!extract_zip(zipPath, tempExtractDir, errors))
         {
+            result["status"] = "error";
             result["errors"] = errors;
             std::cout << result.dump(4) << std::endl;
             return 1;
         }
 
         size_t extracted_items = std::distance(fs::directory_iterator(tempExtractDir), fs::directory_iterator{});
-        if (extracted_items == 1 && fs::is_directory(fs::path(tempExtractDir) / fs::directory_iterator(tempExtractDir).operator*().path().filename()))
+        if (extracted_items == 1 && fs::is_directory(fs::path(tempExtractDir) / fs::directory_iterator(tempExtractDir)->path().filename()))
         {
             fs::path single_dir = (*fs::directory_iterator(tempExtractDir)).path();
             tempExtractDir = single_dir.string();
@@ -408,11 +429,12 @@ int main()
 
         if (!errors.empty())
         {
-            result["success"] = false;
+            result["status"] = "error";
             result["errors"] = errors;
         }
         else
         {
+            result["status"] = "success";
             result["success"] = true;
         }
     }
@@ -421,6 +443,7 @@ int main()
     {
         std::lock_guard<std::mutex> lock(error_mutex);
         errors.emplace_back("Exception occurred: " + std::string(e.what()));
+        result["status"] = "error";
         result["errors"] = errors;
     }
 
